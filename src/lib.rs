@@ -11,6 +11,7 @@
 //!
 //! In microbenchmarks on my machine, it takes less than `200 ns` to swap data and less than `100 ns` to sync execution.
 //!
+//! [`RendezvousData`] contains `unsafe` but all tests pass when running with Miri
 //!
 //! # Example: Sync thread execution
 //! ```rust
