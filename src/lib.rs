@@ -1,4 +1,7 @@
+#![no_std] 
 #![warn(missing_docs)]
+#![allow(clippy::implicit_return)]
+#![allow(clippy::semicolon_inside_block)]
 //! A rendezvous is an execution barrier between a pair of threads, but this crate also provides the option of
 //! swapping data at the synchronisation point.
 //! (Terminology is from [The Little Book of Semaphores](https://greenteapress.com/wp/semaphores/))
@@ -63,8 +66,9 @@
 //!
 //!  # handle.join().unwrap();
 //!```
-//!
-#[test]
+
+
+/*#[test]
 fn equivalent_doctest() {
     use std::thread;
     let (mut my_rendezvous, mut their_rendezvous) = Rendezvous::new();
@@ -99,24 +103,27 @@ fn equivalent_doctest2() {
     assert_eq!(3, *borrowed_data);
 
     handle.join().unwrap();
-}
+}*/
+extern crate alloc;
 
-use std::cell::UnsafeCell;
-use std::hint::spin_loop;
-use std::mem::swap;
-use std::ops::Deref;
-use std::pin::Pin;
-use std::ptr::NonNull;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::{Acquire, Release};
-use std::sync::Arc;
+use core::cell::UnsafeCell;
+use core::hint::spin_loop;
+use core::mem::swap;
+use core::ops::Deref;
+use core::pin::Pin;
+use core::ptr::NonNull;
+use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::Ordering::{Acquire, Release};
+use alloc::sync::Arc;
 
 #[derive(Debug)]
-#[repr(align(128))] // marginally faster
+#[repr(align(128))] // Alignment of 128 marginally faster on x86_64
 struct Padded<T> {
+    /// Inner data
     pub i: T,
 }
 impl<T> Padded<T> {
+    /// Constructs a new [`Padded`]
     fn new(i: T) -> Self {
         Self { i }
     }
@@ -132,15 +139,17 @@ impl<T> Deref for Padded<T> {
 /// A pointer to this will be shared for the two [`RendezvousData`]
 /// Note that this has no indirection.
 struct RendezvousDataShared<T: Sync> {
-    // counters
+    /// First counter 
     c1: Padded<AtomicUsize>,
+    /// Second counter 
     c2: Padded<AtomicUsize>,
-
-    // pointers to shared data
+    /// First shared data (not a pointer)
     p1: Padded<UnsafeCell<T>>,
+    /// Second shared data (not a pointer)
     p2: Padded<UnsafeCell<T>>,
 }
 impl<T: Sync> RendezvousDataShared<T> {
+    /// Constructs a new [`RendezvousDataShared`] from the provided data
     fn new(data1: T, data2: T) -> Self {
         Self {
             c1: Padded::new(AtomicUsize::new(0)),
@@ -154,14 +163,17 @@ impl<T: Sync> RendezvousDataShared<T> {
 /// Synchronise execution and swap data between threads.
 #[non_exhaustive]
 pub struct RendezvousData<T: Sync> {
-    // thead local
+    /// Thread local generation
     generation: usize,
 
-    // synced using atomics
+    /// Atomic counter for this thread
     my_counter: NonNull<AtomicUsize>,
+
+    /// Atomic counter for other thread
     their_counter: NonNull<AtomicUsize>,
 
-    // unsafe mutable, need sync to enforce correctness
+    /// A pair of pointers to the underlying data.
+    /// Needs sync to enforce correctness
     data: (NonNull<UnsafeCell<T>>, NonNull<UnsafeCell<T>>),
 
     /// Let Arc handle dropping shared data so that everything is alive long enough
@@ -169,9 +181,10 @@ pub struct RendezvousData<T: Sync> {
     _handle: Pin<Arc<RendezvousDataShared<T>>>,
 }
 impl<T: Sync> RendezvousData<T> {
-    #[must_use]
     /// Create a linked pair of [`RendezvousData`]
     /// Arguments are the initial values for the data that will be swapped.
+    #[must_use]
+    #[inline]
     pub fn new(data1: T, data2: T) -> (Self, Self) {
         let a = Arc::pin(RendezvousDataShared::new(data1, data2));
 
@@ -195,59 +208,82 @@ impl<T: Sync> RendezvousData<T> {
         )
     }
     /// Swap data with other thread and get a mutable reference to the data.
+    #[allow(clippy::needless_lifetimes)] // lifetime needs to be restricted here
+    #[inline]
     pub fn swap<'a>(&'a mut self) -> &'a mut T {
         self.swap_inline()
     }
 
-    /// Inlined version of [`RendezvousData::swap`]
-    #[allow(clippy::needless_lifetimes)] // false positive
+    /// Allways inlined version of [`RendezvousData::swap`]
+    #[allow(clippy::needless_lifetimes)] // lifetime needs to be restricted here
     #[allow(clippy::inline_always)]
     #[inline(always)]
     pub fn swap_inline<'a>(&'a mut self) -> &'a mut T {
-        self.wait();
+        // SAFETY:
+        // Number of swaps must stay the same between threads
+        unsafe { self.wait() };
 
         // Swap the **pointers** to the underlying data.
         swap(&mut self.data.0, &mut self.data.1);
 
-        // SAFETY: we know that the mutable reference in the other thread
+        // SAFETY:
+        // we know that the mutable reference in the other thread
         // is destryed after calling wait(), and we can therefore create
         // a new mutable reference to that data without causing UB
         unsafe { &mut *(self.data.0.as_ref()).get() }
     }
 
+    /// Synchronize execution with other thread.
+    /// As a side-effect, memory is also synchronized.
+    ///
+    /// # SAFETY
+    /// If number of swaps gets out of sync, muliple mutable references to the same
+    /// memory is created
     #[allow(clippy::inline_always)]
     #[inline(always)]
-    fn wait(&mut self) {
+    unsafe fn wait(&mut self) {
         let next_generation = self.generation.wrapping_add(1);
+
+        // SAFETY:
+        // Pointer is valid as long as the Arc is not dropped
         unsafe { self.my_counter.as_ref() }.store(next_generation, Release);
         while {
             // Signal to processor (not OS) that we are in a spinloop.
             // Performance seems to improve by a tiny bit with this.
             spin_loop();
+
+            // SAFETY:
+            // Pointer is valid as long as the Arc is not dropped
             unsafe { self.their_counter.as_ref() }.load(Acquire) == self.generation
         } {}
         self.generation = next_generation;
     }
 }
+// SAFETY:
+// The act of sending pointers between threads is not unsafe.
 unsafe impl<T: Sync> Send for RendezvousData<T> {}
 
 /// Synchronise execution between threads.
 #[non_exhaustive]
 pub struct Rendezvous {
+    /// Atomic counter for this thread
     my_counter: Arc<AtomicUsize>,
+    /// Atomic counter for other thread
     their_counter: Arc<AtomicUsize>,
+    /// Thread local generation
     generation: usize,
 }
 impl Rendezvous {
     /// Synchronize execution with other thread.
     ///
     /// As a side-effect, memory is also synchronized.
-    #[inline(never)]
+    #[inline]
     pub fn wait(&mut self) {
         self.wait_inline();
     }
 
-    /// Inlined version of [`Rendezvous::wait`]
+    /// Allways inlined version of [`Rendezvous::wait`]
+    #[allow(clippy::inline_always)]
     #[inline(always)]
     pub fn wait_inline(&mut self) {
         let next_generation = self.generation.wrapping_add(1);
@@ -262,13 +298,14 @@ impl Rendezvous {
     }
     /// Create a linked pair of [`Rendezvous`]
     #[must_use]
+    #[inline]
     pub fn new() -> (Self, Self) {
         let first = Arc::new(AtomicUsize::new(0));
         let second = Arc::new(AtomicUsize::new(0));
         (
             Rendezvous {
-                my_counter: first.clone(),
-                their_counter: second.clone(),
+                my_counter: Arc::clone(&first),
+                their_counter: Arc::clone(&second),
                 generation: 0,
             },
             Rendezvous {
