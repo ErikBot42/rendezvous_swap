@@ -8,7 +8,7 @@
 //!
 //! This is mainly intended for situations where threads sync frequently. Unlike a normal spinlock, it does not use any CAS instructions, just [`Acquire`] loads and [`Release`] stores which means it can compile to just a handful of non atomic instructions on `x86_64`. Because the crate uses atomics for synchronisation, it is also `no_std`.
 //!
-//! Data is internally swapped with pointers, so large structures are not costly to swap and therefore does not need to be boxed.
+//! Data is internally swapped with pointers, so large structures are not costly to swap and therefore do not need to be boxed.
 //!
 //! In microbenchmarks on a `i5-7200U` CPU, it takes less than `100 ns` to swap data.
 //!

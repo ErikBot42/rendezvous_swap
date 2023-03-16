@@ -2,14 +2,14 @@
 
 A rendezvous is an execution barrier between a pair of threads, but this crate also provides the option of swapping data at the synchronisation point. (Terminology is from [The Little Book of Semaphores](https://greenteapress.com/wp/semaphores/))
 
-This is mainly intended for situations where threads sync frequently. Unlike a normal spinlock, it does not use any CAS instructions, just [`Acquire`] loads and [`Release`] stores which means it can compile to just a handful of non atomic instructions on `x86_64`.
+This is mainly intended for situations where threads sync frequently. Unlike a normal spinlock, it does not use any CAS instructions, just [`Acquire`] loads and [`Release`] stores which means it can compile to just a handful of non atomic instructions on `x86_64`. Because the crate uses atomics for synchronisation, it is also `no_std`.
 
-Data is internally swapped with pointers, so large structures are not costly to swap and therefore does not need to be boxed.
+Data is internally swapped with pointers, so large structures are not costly to swap and therefore do not need to be boxed.
 
-In microbenchmarks on my machine, it takes less than `200 ns` to swap data and less than `100 ns` to sync execution.
+In microbenchmarks on a `i5-7200U` CPU, it takes less than `100 ns` to swap data.
 
 ## Safety
-[`RendezvousData`] contains `unsafe` but all tests pass when running with Miri
+[`RendezvousData`] contains `unsafe` but all tests pass when running with Miri.
 
 ## Example: Sync thread execution
 ```rust
@@ -28,7 +28,7 @@ for i in 1..5 {
     my_rendezvous.wait();
 }
 ```
-this prints:
+This prints:
 ```
 1
 1
@@ -60,7 +60,7 @@ assert_eq!(3, *borrowed_data);
 
 ```
 ## Example: Safety
-The following won't compile due to the limited lifetime of the references provided by [`RendezvousData::swap`], you will get the familiar lifetime errors as if you are borrowing a struct element. This crate is safe because it is not possible for both threads to have mutabeĺe references to the same memory location at the same time.
+The following won't compile due to the limited lifetime of the references provided by [`RendezvousData::swap`], you will get the familiar lifetime errors as if you are borrowing a struct element. This crate is safe because it is not possible for both threads to have mutable references to the same memory location at the same time.
 ```rust
 use std::thread;
 use rendezvous_swap::RendezvousData;
@@ -75,4 +75,9 @@ let old_borrow = my_rendezvous.swap(); // first mutable borrow occurs here
 let new_borrow = my_rendezvous.swap(); // second mutable borrow occurs here
 
 *old_borrow = 3; // first borrow is later used here
+
 ```
+
+## Current version: 0.1.0
+
+## License: GPL-3.0
