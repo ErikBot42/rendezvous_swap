@@ -75,5 +75,4 @@ let old_borrow = my_rendezvous.swap(); // first mutable borrow occurs here
 let new_borrow = my_rendezvous.swap(); // second mutable borrow occurs here
 
 *old_borrow = 3; // first borrow is later used here
-
 ```
