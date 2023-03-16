@@ -59,7 +59,7 @@ assert_eq!(3, *borrowed_data);
 ```
 ## Example: Safety
 The following won't compile due to the limited lifetime of the references provided by [`RendezvousData::swap`], you will get the familiar lifetime errors as if you are borrowing a struct element. This crate is safe because it is not possible for both threads to have mutabeĺe references to the same memory location at the same time.
-```compile_fail
+```rust
 use std::thread;
 use rendezvous_swap::RendezvousData;
 
@@ -73,6 +73,4 @@ let old_borrow = my_rendezvous.swap(); // first mutable borrow occurs here
 let new_borrow = my_rendezvous.swap(); // second mutable borrow occurs here
 
 *old_borrow = 3; // first borrow is later used here
-
-# handle.join().unwrap();
 ```
