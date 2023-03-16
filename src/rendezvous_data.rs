@@ -1,5 +1,7 @@
 //! Contains [`RendezvousData`]
 
+use cache_padded::CachePadded;
+
 use alloc::sync::Arc;
 use core::cell::UnsafeCell;
 use core::hint::spin_loop;
@@ -9,19 +11,17 @@ use core::ptr::NonNull;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::{Acquire, Release};
 
-use crate::padded::Padded;
-
 /// A pointer to this will be shared for the two [`RendezvousData`]
 /// Note that this has no indirection.
 struct RendezvousDataShared<T: Send + Sync> {
     /// First counter
-    c1: Padded<AtomicUsize>,
+    c1: CachePadded<AtomicUsize>,
     /// Second counter
-    c2: Padded<AtomicUsize>,
+    c2: CachePadded<AtomicUsize>,
     /// First shared data (not a pointer)
-    p1: Padded<UnsafeCell<T>>,
+    p1: CachePadded<UnsafeCell<T>>,
     /// Second shared data (not a pointer)
-    p2: Padded<UnsafeCell<T>>,
+    p2: CachePadded<UnsafeCell<T>>,
 }
 // SAFETY:
 // UnsafeCell needs special consideration
@@ -30,10 +30,10 @@ impl<T: Send + Sync> RendezvousDataShared<T> {
     /// Constructs a new [`RendezvousDataShared`] from the provided data
     const fn new(data1: T, data2: T) -> Self {
         Self {
-            c1: Padded::new(AtomicUsize::new(0)),
-            c2: Padded::new(AtomicUsize::new(0)),
-            p1: Padded::new(UnsafeCell::new(data1)),
-            p2: Padded::new(UnsafeCell::new(data2)),
+            c1: CachePadded::new(AtomicUsize::new(0)),
+            c2: CachePadded::new(AtomicUsize::new(0)),
+            p1: CachePadded::new(UnsafeCell::new(data1)),
+            p2: CachePadded::new(UnsafeCell::new(data2)),
         }
     }
 }

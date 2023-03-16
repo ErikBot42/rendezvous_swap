@@ -85,7 +85,6 @@
 //! ```
 
 extern crate alloc;
-mod padded;
 mod rendezvous_data;
 mod rendezvous;
 

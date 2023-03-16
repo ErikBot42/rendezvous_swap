@@ -12,8 +12,20 @@ readme = "README.md"
 repository = "https://github.com/ErikBot42/rendezvous_swap"
 license = "GPL-3.0"
 #license-file = "LICENSE.md"
-keywords = [""] # max 5, max 20 char
-categories = [""] # max 5, in set https://crates.io/category_slugs
+keywords = [
+    "synchronization",
+    "atomic",
+    "thread",
+    "memory",
+    "cross-platform",
+] 
+categories = [
+    "concurrency",
+    "no-std",
+    "memory-management",
+    "data-structures",
+    "embedded",
+] 
 publish = false
 
 [dev-dependencies]
@@ -24,3 +36,4 @@ name = "benchmark"
 harness = false
 
 [dependencies]
+cache-padded = "1.2.0"
