@@ -62,7 +62,7 @@
 //! # handle.join().unwrap();
 //! ```
 //! # Example: Safety
-//! The following won't compile due to the limited lifetime of the references provided by [`RendezvousData::swap`], you will get the familiar lifetime errors as if you are borrowing a struct element. This crate is safe because it's impossible for both threads to have mutabeĺe references to the same memory location at the same time. 
+//! The following won't compile due to the limited lifetime of the references provided by [`RendezvousData::swap`], you will get the familiar lifetime errors as if you are borrowing a struct element. This crate is safe because it is not possible for both threads to have mutabeĺe references to the same memory location at the same time. 
 //! ```compile_fail
 //! use std::thread;
 //! use rendezvous_swap::RendezvousData;
