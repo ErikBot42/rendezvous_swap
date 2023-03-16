@@ -8,6 +8,7 @@ Data is internally swapped with pointers, so large structures are not costly to 
 
 In microbenchmarks on my machine, it takes less than `200 ns` to swap data and less than `100 ns` to sync execution.
 
+## Safety
 [`RendezvousData`] contains `unsafe` but all tests pass when running with Miri
 
 ## Example: Sync thread execution
