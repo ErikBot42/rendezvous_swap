@@ -1,40 +1,35 @@
-#![no_std] 
+#![no_std]
 #![warn(missing_docs)]
 #![allow(clippy::implicit_return)]
 #![allow(clippy::semicolon_inside_block)]
-//! A rendezvous is an execution barrier between a pair of threads, but this crate also provides the option of
-//! swapping data at the synchronisation point.
-//! (Terminology is from [The Little Book of Semaphores](https://greenteapress.com/wp/semaphores/))
+#![allow(clippy::blanket_clippy_restriction_lints)]
+//! A rendezvous is an execution barrier between a pair of threads, but this crate also provides the option of swapping data at the synchronisation point. (Terminology is from [The Little Book of Semaphores](https://greenteapress.com/wp/semaphores/))
 //!
-//! This is mainly intended for situations where threads sync frequently.
-//! Unlike a normal spinlock, it does not use any CAS instructions, just [`Acquire`] loads and [`Release`] stores which means it
-//! can compile to just a handful of non atomic instructions on `x86_64`.
+//! This is mainly intended for situations where threads sync frequently. Unlike a normal spinlock, it does not use any CAS instructions, just [`Acquire`] loads and [`Release`] stores which means it can compile to just a handful of non atomic instructions on `x86_64`.
 //!
-//! Data is internally swapped with pointers, so large structures are not costly to swap and
-//! therefore does not need to be boxed.
+//! Data is internally swapped with pointers, so large structures are not costly to swap and therefore does not need to be boxed.
 //!
-//! In microbenchmarks on my machine, it takes less than `200 ns` to swap data and less than `100 ns` to sync
-//! execution.
+//! In microbenchmarks on my machine, it takes less than `200 ns` to swap data and less than `100 ns` to sync execution.
 //!
-//! # Usage
-//! ## Sync thread execution
+//!
+//! # Example: Sync thread execution
 //! ```rust
 //! use rendezvous_swap::Rendezvous;
 //! use std::thread;
 //!
-//!    let (mut my_rendezvous, mut their_rendezvous) = Rendezvous::new();
-//!    thread::spawn(move || {
-//!        for i in 1..5 {
-//!            println!("{i}");
-//!            their_rendezvous.wait();
-//!        }
-//!    });
-//!    for i in 1..5 {
-//!        println!("{i}");
-//!        my_rendezvous.wait();
-//!    }
+//! let (mut my_rendezvous, mut their_rendezvous) = Rendezvous::new();
+//! thread::spawn(move || {
+//!     for i in 1..5 {
+//!         println!("{i}");
+//!         their_rendezvous.wait();
+//!     }
+//! });
+//! for i in 1..5 {
+//!     println!("{i}");
+//!     my_rendezvous.wait();
+//! }
 //! ```
-//! prints:
+//! this prints:
 //! ```text
 //! 1
 //! 1
@@ -45,67 +40,49 @@
 //! 4
 //! 4
 //! ```
-//! ## Swap thread data
-//!```rust
-//!  use std::thread;
-//!  use rendezvous_swap::RendezvousData;
+//! # Example: Swap thread data
+//! ```rust
+//! use std::thread;
+//! use rendezvous_swap::RendezvousData;
 //!
-//!  let (mut my_rendezvous, mut their_rendezvous) = RendezvousData::new(0, 0);
-//!  let handle = thread::spawn(move || {
-//!      let borrow = their_rendezvous.swap();
-//!      *borrow = 3;
-//!      
-//!      let borrow = their_rendezvous.swap();
-//!      assert_eq!(7, *borrow);
-//!  });
-//!  let borrow = my_rendezvous.swap();
-//!  *borrow = 7;
+//! let (mut my_rendezvous, mut their_rendezvous) = RendezvousData::new(0, 0);
+//! let handle = thread::spawn(move || {
+//!     let borrow = their_rendezvous.swap();
+//!     *borrow = 3;
+//!     
+//!     let borrow = their_rendezvous.swap();
+//!     assert_eq!(7, *borrow);
+//! });
+//! let borrow = my_rendezvous.swap();
+//! *borrow = 7;
 //!
-//!  let borrowed_data = my_rendezvous.swap();
-//!  assert_eq!(3, *borrowed_data);
+//! let borrowed_data = my_rendezvous.swap();
+//! assert_eq!(3, *borrowed_data);
 //!
-//!  # handle.join().unwrap();
-//!```
+//! # handle.join().unwrap();
+//! ```
+//! # Example: Safety
+//! The following won't compile due to the limited lifetime of the references provided by [`RendezvousData::swap`], you will get the familiar lifetime errors as if you are borrowing a struct element. This crate is safe because it's impossible for both threads to have mutabeĺe references to the same memory location at the same time. 
+//! ```compile_fail
+//! use std::thread;
+//! use rendezvous_swap::RendezvousData;
+//!
+//! let (mut my_rendezvous, mut their_rendezvous) = RendezvousData::new(0, 0);
+//! let handle = thread::spawn(move || {
+//!     their_rendezvous.swap(); // swap return values can be ignored
+//!     their_rendezvous.swap();
+//! });
+//! let old_borrow = my_rendezvous.swap(); // first mutable borrow occurs here
+//!
+//! let new_borrow = my_rendezvous.swap(); // second mutable borrow occurs here
+//! 
+//! *old_borrow = 3; // first borrow is later used here
+//!
+//! # handle.join().unwrap();
+//! ```
 
-
-/*#[test]
-fn equivalent_doctest() {
-    use std::thread;
-    let (mut my_rendezvous, mut their_rendezvous) = Rendezvous::new();
-    thread::spawn(move || {
-        for i in 1..5 {
-            println!("{i} their thead");
-            their_rendezvous.wait();
-        }
-    });
-    for i in 1..5 {
-        println!("{i} my thead");
-        my_rendezvous.wait();
-    }
-}
-
-#[test]
-fn equivalent_doctest2() {
-    use std::thread;
-
-    let (mut my_rendezvous, mut their_rendezvous) = RendezvousData::new(0, 0);
-    let handle = thread::spawn(move || {
-        let borrow = their_rendezvous.swap();
-        *borrow = 3;
-
-        let borrow = their_rendezvous.swap();
-        assert_eq!(7, *borrow);
-    });
-    let borrow = my_rendezvous.swap();
-    *borrow = 7;
-
-    let borrowed_data = my_rendezvous.swap();
-    assert_eq!(3, *borrowed_data);
-
-    handle.join().unwrap();
-}*/
 extern crate alloc;
-
+use alloc::sync::Arc;
 use core::cell::UnsafeCell;
 use core::hint::spin_loop;
 use core::mem::swap;
@@ -114,17 +91,17 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering::{Acquire, Release};
-use alloc::sync::Arc;
 
 #[derive(Debug)]
 #[repr(align(128))] // Alignment of 128 marginally faster on x86_64
+/// Pad data so it is aligned to cache line (currently hard coded to 128 bytes)
 struct Padded<T> {
     /// Inner data
     pub i: T,
 }
 impl<T> Padded<T> {
     /// Constructs a new [`Padded`]
-    fn new(i: T) -> Self {
+    const fn new(i: T) -> Self {
         Self { i }
     }
 }
@@ -139,9 +116,9 @@ impl<T> Deref for Padded<T> {
 /// A pointer to this will be shared for the two [`RendezvousData`]
 /// Note that this has no indirection.
 struct RendezvousDataShared<T: Sync> {
-    /// First counter 
+    /// First counter
     c1: Padded<AtomicUsize>,
-    /// Second counter 
+    /// Second counter
     c2: Padded<AtomicUsize>,
     /// First shared data (not a pointer)
     p1: Padded<UnsafeCell<T>>,
@@ -210,7 +187,7 @@ impl<T: Sync> RendezvousData<T> {
     /// Swap data with other thread and get a mutable reference to the data.
     #[allow(clippy::needless_lifetimes)] // lifetime needs to be restricted here
     #[inline]
-    pub fn swap<'a>(&'a mut self) -> &'a mut T {
+    pub fn swap<'lock>(&'lock mut self) -> &'lock mut T {
         self.swap_inline()
     }
 
@@ -218,7 +195,7 @@ impl<T: Sync> RendezvousData<T> {
     #[allow(clippy::needless_lifetimes)] // lifetime needs to be restricted here
     #[allow(clippy::inline_always)]
     #[inline(always)]
-    pub fn swap_inline<'a>(&'a mut self) -> &'a mut T {
+    pub fn swap_inline<'lock>(&'lock mut self) -> &'lock mut T {
         // SAFETY:
         // Number of swaps must stay the same between threads
         unsafe { self.wait() };
@@ -261,7 +238,9 @@ impl<T: Sync> RendezvousData<T> {
 }
 // SAFETY:
 // The act of sending pointers between threads is not unsafe.
+// UnsafeCell requires special consideration
 unsafe impl<T: Sync> Send for RendezvousData<T> {}
+// where Pin<Arc<RendezvousDataShared<T>>>: Send {}
 
 /// Synchronise execution between threads.
 #[non_exhaustive]
@@ -303,12 +282,12 @@ impl Rendezvous {
         let first = Arc::new(AtomicUsize::new(0));
         let second = Arc::new(AtomicUsize::new(0));
         (
-            Rendezvous {
+            Self {
                 my_counter: Arc::clone(&first),
                 their_counter: Arc::clone(&second),
                 generation: 0,
             },
-            Rendezvous {
+            Self {
                 my_counter: second,
                 their_counter: first,
                 generation: 0,
